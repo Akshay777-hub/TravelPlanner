@@ -1,0 +1,157 @@
+openapi: 3.0.0
+info:
+  title: AI Travel Planner API
+  description: API for a smart travel planner with weather customization and real-time transport options.
+  version: 3.0.0
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Budget:
+      type: object
+      properties:
+        min: { type: number }
+        max: { type: number }
+        currency: { type: string, example: "INR" }
+    Location:
+      type: object
+      properties:
+        name: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+    Activity:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        location: { $ref: '#/components/schemas/Location' }
+    Weather:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        weather_code: { type: integer }
+        temp_max: { type: number }
+        temp_min: { type: number }
+    DayPlan:
+      type: object
+      properties:
+        day: { type: integer }
+        date: { type: string, format: date }
+        weather: { $ref: '#/components/schemas/Weather' }
+        morning: { $ref: '#/components/schemas/Activity' }
+        afternoon: { $ref: '#/components/schemas/Activity' }
+        evening: { $ref: '#/components/schemas/Activity' }
+    Trip:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: string, format: uuid }
+        destination: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        budget: { $ref: '#/components/schemas/Budget' }
+        interests: { type: array, items: { type: string } }
+        itinerary: { type: array, items: { $ref: '#/components/schemas/DayPlan' } }
+
+paths:
+  # ... (Authentication and General paths remain the same) ...
+  /:
+    get: { summary: Welcome Endpoint, tags: [General], responses: { '200': { description: API is running } } }
+  /api/v1/auth/register:
+    post: { summary: Register a new user, tags: [Authentication], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { email: { type: string }, password: { type: string } } } } } }, responses: { '201': { description: User created successfully } } }
+  /api/v1/auth/login:
+    post: { summary: Log in a user, tags: [Authentication], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { email: { type: string }, password: { type: string } } } } } }, responses: { '200': { description: Login successful } } }
+  
+  /api/v1/trips:
+    get:
+      summary: Get all trips for the current user
+      tags: [Trips]
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: A list of trips, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Trip' } } } } }
+    post:
+      summary: Create a new, intelligent trip
+      tags: [Trips]
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination, start_date, end_date, budget]
+              properties:
+                destination: { type: string, example: "Mumbai, India" }
+                start_date: { type: string, format: date, example: "2025-10-20" }
+                end_date: { type: string, format: date, example: "2025-10-22" }
+                budget: { $ref: '#/components/schemas/Budget' }
+                interests: { type: array, items: { type: string }, example: ["markets", "bollywood"] }
+      responses:
+        '201': { description: Trip created successfully, content: { application/json: { schema: { $ref: '#/components/schemas/Trip' } } } }
+  
+  /api/v1/trips/{trip_id}:
+    get:
+      summary: Get a specific trip
+      tags: [Trips]
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { in: path, name: trip_id, required: true, schema: { type: integer } } ]
+      responses:
+        '200': { description: Trip details, content: { application/json: { schema: { $ref: '#/components/schemas/Trip' } } } }
+    delete:
+      summary: Delete a specific trip
+      tags: [Trips]
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { in: path, name: trip_id, required: true, schema: { type: integer } } ]
+      responses:
+        '200': { description: Trip deleted successfully }
+
+  # --- New Transport Endpoints ---
+  /api/v1/trips/{trip_id}/transport/flights:
+    get:
+      summary: Get real-time flight options for a trip
+      tags: [Transport]
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: trip_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: origin
+          required: true
+          schema:
+            type: string
+            example: "Kochi, India"
+      responses:
+        '200':
+          description: A list of available flight offers.
+  
+  /api/v1/trips/{trip_id}/transport/trains:
+    get:
+      summary: Get simulated train options for a trip
+      tags: [Transport]
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: trip_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: origin
+          required: true
+          schema:
+            type: string
+            example: "Kochi, India"
+      responses:
+        '200':
+          description: A list of simulated train options.
