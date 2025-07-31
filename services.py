@@ -36,11 +36,11 @@ def get_flight_options(origin_city, destination_city, travel_date):
         return {"error": "Amadeus API client not configured."}
     try:
         origin_airports = amadeus.reference_data.locations.get(keyword=origin_city, subType='CITY,AIRPORT').data
-        if not origin_airports: return {"error": f"Could not find airport code for {origin_city}"}
+        if not origin_airports: return None
         origin_iata = origin_airports[0]['iataCode']
 
         dest_airports = amadeus.reference_data.locations.get(keyword=destination_city, subType='CITY,AIRPORT').data
-        if not dest_airports: return {"error": f"Could not find airport code for {destination_city}"}
+        if not dest_airports: return None
         dest_iata = dest_airports[0]['iataCode']
 
         response = amadeus.shopping.flight_offers_search.get(
@@ -48,37 +48,98 @@ def get_flight_options(origin_city, destination_city, travel_date):
             destinationLocationCode=dest_iata,
             departureDate=travel_date,
             adults=1,
-            max=5
+            max=1 # We only need the cheapest option for comparison
         )
         return response.data
     except Exception as e:
-        return {"error": f"Could not fetch flight data: {e}"}
+        print(f"Amadeus Error: {e}")
+        return None
 
 def simulate_train_options(origin_city, destination_city, travel_date):
     """Generates simulated train options."""
+    # In a real app, this would call a train API. Here we simulate.
     return [
-        {"train_name": "Intercity Express", "train_number": "12056", "departure_time": "08:00", "arrival_time": "16:30", "duration": "8h 30m", "price": {"amount": "1500", "currency": "INR"}},
-        {"train_name": "Shatabdi Express", "train_number": "12002", "departure_time": "14:15", "arrival_time": "21:00", "duration": "6h 45m", "price": {"amount": "2200", "currency": "INR"}}
+        {"train_name": "Intercity Express", "price": {"amount": "1500", "currency": "INR"}},
+        {"train_name": "Shatabdi Express", "price": {"amount": "2200", "currency": "INR"}}
     ]
 
-def generate_itinerary_with_coords(destination, start_date, end_date, budget, interests):
-    """Generates a weather-aware, geocoded travel itinerary."""
+def get_transport_recommendation(origin, destination, start_date, end_date, budget):
+    """Analyzes transport options and recommends the best one based on budget."""
+    recommendation = {
+        "mode": "Not available",
+        "estimated_cost_round_trip": None,
+        "details": "Could not determine a suitable travel option."
+    }
+
+    # --- Flight Analysis ---
+    onward_flights = get_flight_options(origin, destination, start_date)
+    return_flights = get_flight_options(destination, origin, end_date)
+    
+    flight_cost = None
+    if onward_flights and return_flights:
+        onward_price = float(onward_flights[0]['price']['total'])
+        return_price = float(return_flights[0]['price']['total'])
+        flight_cost = onward_price + return_price
+
+    # --- Train Analysis (Simulated) ---
+    trains = simulate_train_options(origin, destination, start_date)
+    train_cost = None
+    if trains:
+        # Assuming return cost is same as onward for simulation
+        train_cost = float(trains[0]['price']['amount']) * 2
+
+    # --- Decision Logic ---
+    budget_max = float(budget.get('max', 0))
+    
+    # Prefer train if it's significantly cheaper or if flights are too expensive
+    if train_cost and flight_cost:
+        if train_cost < (flight_cost * 0.7) and train_cost <= budget_max:
+             recommendation['mode'] = "Train"
+             recommendation['estimated_cost_round_trip'] = {"amount": train_cost, "currency": "INR"}
+             recommendation['details'] = f"Recommended train: {trains[0]['train_name']}. Booking advised via local railway services."
+             return recommendation
+
+    # Default to flight if available and within budget
+    if flight_cost and flight_cost <= budget_max:
+        recommendation['mode'] = "Flight"
+        recommendation['estimated_cost_round_trip'] = {"amount": flight_cost, "currency": onward_flights[0]['price']['currency']}
+        recommendation['details'] = f"Cheapest flight option found with carrier {onward_flights[0]['itineraries'][0]['segments'][0]['carrierCode']}. Booking advised via airline or travel portal."
+        return recommendation
+        
+    return recommendation
+
+
+def generate_itinerary_with_coords(destination, start_date, end_date, budget, interests, current_location):
+    """Generates a complete travel plan including transport recommendations."""
     main_location = geocode_ratelimited(destination)
     if not main_location:
         raise Exception(f"Could not find coordinates for destination: {destination}")
 
     weather_data = get_weather_forecast(main_location.latitude, main_location.longitude, start_date, end_date)
+    transport_recommendation = get_transport_recommendation(current_location, destination, start_date, end_date, budget)
+
     weather_prompt_string = json.dumps(weather_data)
-    
+    transport_prompt_string = json.dumps(transport_recommendation)
     duration = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1
 
     prompt = f"""
-    Act as an expert travel agent. Create a detailed, day-by-day travel itinerary for a {duration}-day trip to {destination}, starting on {start_date}.
-    The traveler's budget is between {budget.get('min', 'N/A')} and {budget.get('max', 'N/A')} {budget.get('currency', 'USD')}. Their interests are {', '.join(interests)}.
+    Act as an expert travel agent. Create a detailed itinerary for a {duration}-day trip from {current_location} to {destination}, starting on {start_date}.
+    The traveler's budget is between {budget.get('min')} and {budget.get('max')} {budget.get('currency')}. Their interests are {', '.join(interests)}.
+    
+    Based on analysis, here is the recommended mode of transport: {transport_prompt_string}.
+    Please incorporate the travel from {current_location} to {destination} on the first day and the return journey on the last day into the itinerary.
+
     Here is the weather forecast: {weather_prompt_string}. Use this to suggest weather-appropriate activities.
-    **Crucially, for each activity, you must provide the name of a real, specific, and geocodable point of interest.**
-    For each day, provide suggestions for 'morning', 'afternoon', and 'evening' in that specific order, each with a "name" and "description".
-    Provide the output as a valid JSON array where each object represents a day.
+    
+    For each day, provide suggestions for 'morning', 'afternoon', and 'evening' in that specific order. For each suggestion, provide:
+    1. A "name" of a real, geocodable point of interest.
+    2. A "description".
+    3. An "estimated_cost" object.
+    4. A "local_cuisine_suggestion".
+    5. A "special_event" (null if none).
+
+    The sum of all 'estimated_cost' amounts must fall within the traveler's budget.
+    Provide the output as a valid JSON array.
     """
     
     headers = {'Content-Type': 'application/json'}
@@ -88,9 +149,20 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
     if response.status_code != 200:
         raise Exception(f"Failed to generate itinerary from Gemini. Status: {response.status_code}, Response: {response.text}")
 
-    response_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-    itinerary = json.loads(response_text.strip().replace('```json', '').replace('```', ''))
+    try:
+        response_json = response.json()
+        if 'candidates' not in response_json or not response_json['candidates']:
+             raise ValueError("Gemini API response is missing 'candidates'.")
+        response_text = response_json['candidates'][0]['content']['parts'][0]['text']
+        cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
+        if not cleaned_response:
+            raise ValueError("Gemini API returned an empty text response.")
+        itinerary = json.loads(cleaned_response)
+    except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
+        print(f"--- FAILED TO PARSE GEMINI RESPONSE ---\nError: {e}\nRaw Response: {response.text}\n------------------------------------")
+        raise Exception("Could not parse the itinerary from the AI.")
 
+    # Post-processing to add coordinates and weather
     for i, day_plan in enumerate(itinerary):
         if i < len(weather_data): day_plan['weather'] = weather_data[i]
         for period in ['morning', 'afternoon', 'evening']:
@@ -103,4 +175,6 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
                 except Exception as e:
                     print(f"Could not geocode {location_name}: {e}")
                     day_plan[period]['location'] = None
-    return itinerary
+    
+    # Add the transport recommendation to the final output for clarity
+    return {"itinerary": itinerary, "transport_recommendation": transport_recommendation}

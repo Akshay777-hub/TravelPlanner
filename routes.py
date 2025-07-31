@@ -49,13 +49,37 @@ def create_trip():
     user, error = get_user_from_token(request)
     if error: return jsonify(error), 401
     data = request.get_json()
-    if not all(k in data for k in ['destination', 'start_date', 'end_date', 'budget']):
-        return jsonify({"msg": "Missing required fields"}), 400
+    required_fields = ['destination', 'start_date', 'end_date', 'budget', 'current_location']
+    if not all(k in data for k in required_fields):
+        return jsonify({"msg": f"Missing required fields. Required: {required_fields}"}), 400
     try:
-        itinerary = generate_itinerary_with_coords(data['destination'], data['start_date'], data['end_date'], data.get('budget'), data.get('interests', []))
-        trip_data = {'user_id': user.user.id, **data, 'itinerary': itinerary}
+        plan = generate_itinerary_with_coords(
+            data['destination'], 
+            data['start_date'], 
+            data['end_date'], 
+            data.get('budget'), 
+            data.get('interests', []),
+            data['current_location']
+        )
+        
+        # We save the itinerary part of the plan to the trip record
+        trip_data = {
+            'user_id': user.user.id,
+            'destination': data['destination'],
+            'start_date': data['start_date'],
+            'end_date': data['end_date'],
+            'budget': data.get('budget'),
+            'interests': data.get('interests', []),
+            'itinerary': plan['itinerary'] # Save only the itinerary to the DB
+        }
         response = supabase.table('trips').insert(trip_data).execute()
-        return jsonify({"msg": "Trip created successfully", "trip": response.data[0]}), 201
+        
+        # We return the full plan (itinerary + transport) to the user
+        return jsonify({
+            "msg": "Trip created successfully", 
+            "trip_id": response.data[0]['id'],
+            "plan": plan
+        }), 201
     except Exception as e:
         return jsonify({"msg": f"Failed to create trip: {e}"}), 500
 
@@ -82,27 +106,27 @@ def delete_trip(trip_id):
     if not response.data: return jsonify({"msg": "Trip not found or not authorized"}), 404
     return jsonify({"msg": "Trip deleted successfully"})
 
-# --- Transport Routes ---
-@api.route('/trips/<int:trip_id>/transport/flights', methods=['GET'])
-def get_flights_for_trip(trip_id):
+# --- Standalone Transport Routes (kept for direct queries) ---
+@api.route('/transport/flights', methods=['GET'])
+def get_flights_standalone():
     user, error = get_user_from_token(request)
     if error: return jsonify(error), 401
     origin = request.args.get('origin')
-    if not origin: return jsonify({"msg": "Missing required query parameter: origin"}), 400
-    trip_response = supabase.table('trips').select("destination, start_date").eq('id', trip_id).eq('user_id', user.user.id).execute()
-    if not trip_response.data: return jsonify({"msg": "Trip not found"}), 404
-    trip = trip_response.data[0]
-    flight_options = get_flight_options(origin, trip['destination'], trip['start_date'])
+    destination = request.args.get('destination')
+    date = request.args.get('date')
+    if not all([origin, destination, date]):
+        return jsonify({"msg": "Missing required query parameters: origin, destination, date"}), 400
+    flight_options = get_flight_options(origin, destination, date)
     return jsonify(flight_options)
 
-@api.route('/trips/<int:trip_id>/transport/trains', methods=['GET'])
-def get_trains_for_trip(trip_id):
+@api.route('/transport/trains', methods=['GET'])
+def get_trains_standalone():
     user, error = get_user_from_token(request)
     if error: return jsonify(error), 401
     origin = request.args.get('origin')
-    if not origin: return jsonify({"msg": "Missing required query parameter: origin"}), 400
-    trip_response = supabase.table('trips').select("destination, start_date").eq('id', trip_id).eq('user_id', user.user.id).execute()
-    if not trip_response.data: return jsonify({"msg": "Trip not found"}), 404
-    trip = trip_response.data[0]
-    train_options = simulate_train_options(origin, trip['destination'], trip['start_date'])
+    destination = request.args.get('destination')
+    date = request.args.get('date')
+    if not all([origin, destination, date]):
+        return jsonify({"msg": "Missing required query parameters: origin, destination, date"}), 400
+    train_options = simulate_train_options(origin, destination, date)
     return jsonify(train_options)
