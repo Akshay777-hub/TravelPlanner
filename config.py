@@ -7,7 +7,8 @@ from geopy.extra.rate_limiter import RateLimiter
 import openmeteo_requests
 import requests_cache
 from retry_requests import retry
-from amadeus import Client as AmadeusClient
+from amadeus import Client as AmadeusClient  # ✅ Correct
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,7 +35,8 @@ amadeus = AmadeusClient(
     client_secret=AMADEUS_API_SECRET
 ) if AMADEUS_API_KEY and AMADEUS_API_SECRET else None
 
-# Open-Meteo for Weather
-cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+# OpenMeteo for Weather
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)

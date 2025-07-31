@@ -24,7 +24,7 @@
             100% { transform: rotate(360deg); }
         }
     </style>
-     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -41,6 +41,10 @@
             <div class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto">
                 <h2 id="auth-title" class="text-2xl font-semibold text-center mb-6">Login</h2>
                 <form id="auth-form">
+                    <div id="name-field" class="mb-4 hidden">
+                        <label for="name" class="block text-gray-700 font-medium mb-2">Full Name</label>
+                        <input type="text" id="name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
                     <div class="mb-4">
                         <label for="email" class="block text-gray-700 font-medium mb-2">Email</label>
                         <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
@@ -132,7 +136,7 @@
             ? 'http://localhost:5000/api/v1' 
             : window.location.origin + '/api/v1';
 
-        console.log('API Base URL:', API_BASE_URL);  // For debugging
+        console.log('API Base URL:', API_BASE_URL);
 
         // DOM Elements
         const authView = document.getElementById('auth-view');
@@ -178,6 +182,7 @@
             isLogin = !isLogin;
             authTitle.textContent = isLogin ? 'Login' : 'Register';
             authSubmitBtn.textContent = isLogin ? 'Login' : 'Register';
+            document.getElementById('name-field').classList.toggle('hidden', isLogin);
             authToggle.innerHTML = isLogin 
                 ? `Don't have an account? <a href="#" class="text-blue-600 hover:underline">Register here</a>`
                 : `Already have an account? <a href="#" class="text-blue-600 hover:underline">Login here</a>`;
@@ -189,7 +194,26 @@
             authError.textContent = '';
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            
+            // Validate inputs
+            if (!email || !password) {
+                authError.textContent = 'Email and password are required';
+                return;
+            }
+            
+            if (!isLogin && !document.getElementById('name').value) {
+                authError.textContent = 'Name is required for registration';
+                return;
+            }
+
             const endpoint = isLogin ? '/auth/login' : '/auth/register';
+            const requestBody = isLogin 
+                ? { email, password }
+                : { 
+                    email, 
+                    password,
+                    name: document.getElementById('name').value || 'User'
+                };
 
             try {
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -198,13 +222,21 @@
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify(requestBody)
                 });
                 
-                // First check if response is OK
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.msg || `HTTP error! status: ${response.status}`);
+                    const errorMsg = errorData.msg || `HTTP error! status: ${response.status}`;
+                    
+                    if (errorMsg.includes('Password cannot be null')) {
+                        throw new Error('Password is required');
+                    }
+                    if (errorMsg.includes('User already registered')) {
+                        throw new Error('Email already registered');
+                    }
+                    
+                    throw new Error(errorMsg);
                 }
                 
                 const data = await response.json();
@@ -260,7 +292,6 @@
                     body: JSON.stringify(payload)
                 });
 
-                // Improved error handling
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.msg || `HTTP error! status: ${response.status}`);
@@ -367,7 +398,7 @@
                 markers.addTo(map);
                 map.fitBounds(markers.getBounds().pad(0.1));
             } else {
-                 map.setView([20.5937, 78.9629], 4); // Default to India view if no locations
+                 map.setView([20.5937, 78.9629], 4);
             }
         }
 
@@ -383,7 +414,6 @@
 
         // --- Initial Load ---
         checkAuthState();
-
     </script>
 </body>
 </html>

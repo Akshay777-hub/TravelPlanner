@@ -152,12 +152,31 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
     try:
         response_json = response.json()
         if 'candidates' not in response_json or not response_json['candidates']:
-             raise ValueError("Gemini API response is missing 'candidates'.")
+            raise ValueError("Gemini API response is missing 'candidates'.")
+        
         response_text = response_json['candidates'][0]['content']['parts'][0]['text']
-        cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
+        
+        # --- MODIFICATION STARTS HERE ---
+        # Extract the JSON string between ```json and ```
+        json_start = response_text.find('```json')
+        json_end = response_text.rfind('```')
+        
+        if json_start != -1 and json_end != -1 and json_start < json_end:
+            # Add len('```json') to get past the opening tag
+            cleaned_response = response_text[json_start + len('```json'):json_end].strip()
+        else:
+            # Fallback if markdown fences are not found (though the prompt asks for them)
+            # In production, you might want to raise an error here explicitly
+            # if a JSON markdown block is strictly expected.
+            cleaned_response = response_text.strip()
+            print("Warning: JSON markdown fences not found, attempting to parse entire response text.")
+            
         if not cleaned_response:
-            raise ValueError("Gemini API returned an empty text response.")
+            raise ValueError("Gemini API returned an empty or unparseable text response.")
+        
         itinerary = json.loads(cleaned_response)
+        # --- MODIFICATION ENDS HERE ---
+
     except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
         print(f"--- FAILED TO PARSE GEMINI RESPONSE ---\nError: {e}\nRaw Response: {response.text}\n------------------------------------")
         raise Exception("Could not parse the itinerary from the AI.")
