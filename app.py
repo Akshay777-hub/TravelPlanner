@@ -1,12 +1,15 @@
-# app.py
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, send_from_directory
 from flask_swagger_ui import get_swaggerui_blueprint
-from routes import api # Import the blueprint
+from flask_cors import CORS
+from routes import api
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend')
 
-# --- Swagger UI Configuration ---
+# CORS Configuration - Allow all routes for simplicity during development
+CORS(app)
+
+# Swagger UI Setup
 SWAGGER_URL = '/api/docs'
 API_URL = '/swagger.yaml'
 swaggerui_blueprint = get_swaggerui_blueprint(
@@ -16,18 +19,22 @@ swaggerui_blueprint = get_swaggerui_blueprint(
 )
 app.register_blueprint(swaggerui_blueprint)
 
-# Register the API routes
+# Register API routes
 app.register_blueprint(api)
 
-# Route to serve the swagger.yaml file
+# Serve Swagger spec
 @app.route('/swagger.yaml')
-def send_swagger_yaml():
+def swagger():
     return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'swagger.yaml')
 
-# Welcome route
+# Serve frontend files
 @app.route('/')
-def index():
-    return jsonify({"msg": "Welcome to the AI Travel Planner API! Docs are at /api/docs"})
+def serve_frontend():
+    return send_from_directory('frontend', 'frontend.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('frontend', path)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000, host='0.0.0.0')

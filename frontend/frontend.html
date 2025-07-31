@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Travel Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 400px; border-radius: 0.5rem; z-index: 0; }
+        .leaflet-popup-content-wrapper { border-radius: 0.5rem; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">AI Travel Planner</h1>
+            <p class="text-lg text-gray-600 mt-2">Your intelligent guide to the perfect trip.</p>
+        </header>
+
+        <!-- Auth View -->
+        <div id="auth-view">
+            <div class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto">
+                <h2 id="auth-title" class="text-2xl font-semibold text-center mb-6">Login</h2>
+                <form id="auth-form">
+                    <div class="mb-4">
+                        <label for="email" class="block text-gray-700 font-medium mb-2">Email</label>
+                        <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block text-gray-700 font-medium mb-2">Password</label>
+                        <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <button type="submit" id="auth-submit-btn" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition duration-300 font-semibold">Login</button>
+                </form>
+                <p id="auth-toggle" class="text-center mt-4 text-sm">
+                    Don't have an account? <a href="#" class="text-blue-600 hover:underline">Register here</a>
+                </p>
+                <div id="auth-error" class="mt-4 text-red-600 text-center"></div>
+            </div>
+        </div>
+
+        <!-- Planner View -->
+        <div id="planner-view" class="hidden">
+             <div class="flex justify-between items-center mb-6">
+                <h2 class="text-3xl font-semibold">Plan a New Trip</h2>
+                <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition">Logout</button>
+            </div>
+            <div class="bg-white p-8 rounded-lg shadow-md">
+                <form id="planner-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="current_location" class="block text-gray-700 font-medium mb-2">Your Current Location</label>
+                            <input type="text" id="current_location" placeholder="e.g., Mumbai, India" class="w-full px-4 py-2 border rounded-lg" required>
+                        </div>
+                        <div>
+                            <label for="destination" class="block text-gray-700 font-medium mb-2">Destination</label>
+                            <input type="text" id="destination" placeholder="e.g., Goa, India" class="w-full px-4 py-2 border rounded-lg" required>
+                        </div>
+                        <div>
+                            <label for="start_date" class="block text-gray-700 font-medium mb-2">Start Date</label>
+                            <input type="date" id="start_date" class="w-full px-4 py-2 border rounded-lg" required>
+                        </div>
+                        <div>
+                            <label for="end_date" class="block text-gray-700 font-medium mb-2">End Date</label>
+                            <input type="date" id="end_date" class="w-full px-4 py-2 border rounded-lg" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 font-medium mb-2">Budget (INR)</label>
+                            <div class="grid grid-cols-2 gap-4">
+                                <input type="number" id="budget_min" placeholder="Min" class="w-full px-4 py-2 border rounded-lg" required>
+                                <input type="number" id="budget_max" placeholder="Max" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                        </div>
+                         <div class="md:col-span-2">
+                            <label for="interests" class="block text-gray-700 font-medium mb-2">Interests</label>
+                            <input type="text" id="interests" placeholder="e.g., beaches, nightlife, history" class="w-full px-4 py-2 border rounded-lg">
+                            <p class="text-xs text-gray-500 mt-1">Separate interests with a comma.</p>
+                        </div>
+                    </div>
+                    <div class="mt-8 text-center">
+                        <button type="submit" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition font-semibold text-lg">Generate My Itinerary</button>
+                    </div>
+                </form>
+                 <div id="planner-error" class="mt-4 text-red-600 text-center"></div>
+            </div>
+        </div>
+
+        <!-- Itinerary View -->
+        <div id="itinerary-view" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="itinerary-title" class="text-3xl font-semibold">Your Trip to Goa</h2>
+                 <button id="new-trip-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Plan a New Trip</button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loader" class="hidden my-8 flex justify-center">
+                <div class="loader"></div>
+            </div>
+
+            <div id="itinerary-content">
+                <!-- Transport Recommendation -->
+                <div id="transport-section" class="bg-white p-6 rounded-lg shadow-md mb-8"></div>
+                <!-- Map -->
+                <div id="map" class="mb-8"></div>
+                <!-- Day-by-day Itinerary -->
+                <div id="daily-plan-section" class="space-y-6"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin.includes('localhost') 
+            ? 'http://localhost:5000/api/v1' 
+            : window.location.origin + '/api/v1';
+
+        console.log('API Base URL:', API_BASE_URL);  // For debugging
+
+        // DOM Elements
+        const authView = document.getElementById('auth-view');
+        const plannerView = document.getElementById('planner-view');
+        const itineraryView = document.getElementById('itinerary-view');
+        const authForm = document.getElementById('auth-form');
+        const plannerForm = document.getElementById('planner-form');
+        const authTitle = document.getElementById('auth-title');
+        const authSubmitBtn = document.getElementById('auth-submit-btn');
+        const authToggle = document.getElementById('auth-toggle');
+        const authError = document.getElementById('auth-error');
+        const plannerError = document.getElementById('planner-error');
+        const logoutBtn = document.getElementById('logout-btn');
+        const newTripBtn = document.getElementById('new-trip-btn');
+        const loader = document.getElementById('loader');
+        const itineraryContent = document.getElementById('itinerary-content');
+        
+        let isLogin = true;
+        let map;
+
+        // --- State Management ---
+        function checkAuthState() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                showView('planner');
+            } else {
+                showView('auth');
+            }
+        }
+
+        function showView(viewName) {
+            authView.classList.add('hidden');
+            plannerView.classList.add('hidden');
+            itineraryView.classList.add('hidden');
+
+            if (viewName === 'auth') authView.classList.remove('hidden');
+            if (viewName === 'planner') plannerView.classList.remove('hidden');
+            if (viewName === 'itinerary') itineraryView.classList.remove('hidden');
+        }
+
+        // --- Auth Logic ---
+        function toggleAuthMode() {
+            isLogin = !isLogin;
+            authTitle.textContent = isLogin ? 'Login' : 'Register';
+            authSubmitBtn.textContent = isLogin ? 'Login' : 'Register';
+            authToggle.innerHTML = isLogin 
+                ? `Don't have an account? <a href="#" class="text-blue-600 hover:underline">Register here</a>`
+                : `Already have an account? <a href="#" class="text-blue-600 hover:underline">Login here</a>`;
+            authError.textContent = '';
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            authError.textContent = '';
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const endpoint = isLogin ? '/auth/login' : '/auth/register';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                // First check if response is OK
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.msg || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                if (isLogin) {
+                    localStorage.setItem('authToken', data.access_token);
+                    checkAuthState();
+                } else {
+                    alert('Registration successful! Please log in.');
+                    toggleAuthMode();
+                }
+            } catch (error) {
+                console.error('Auth Error:', error);
+                authError.textContent = error.message;
+            }
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('authToken');
+            checkAuthState();
+        }
+
+        // --- Planner Logic ---
+        async function handlePlanTrip(e) {
+            e.preventDefault();
+            plannerError.textContent = '';
+            showView('itinerary');
+            loader.classList.remove('hidden');
+            itineraryContent.classList.add('hidden');
+
+            const payload = {
+                current_location: document.getElementById('current_location').value,
+                destination: document.getElementById('destination').value,
+                start_date: document.getElementById('start_date').value,
+                end_date: document.getElementById('end_date').value,
+                budget: {
+                    min: parseInt(document.getElementById('budget_min').value),
+                    max: parseInt(document.getElementById('budget_max').value),
+                    currency: "INR"
+                },
+                interests: document.getElementById('interests').value.split(',').map(i => i.trim()).filter(i => i)
+            };
+
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(`${API_BASE_URL}/trips`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                // Improved error handling
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.msg || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                renderItinerary(data.plan, payload.destination);
+
+            } catch (error) {
+                console.error('Trip Planning Error:', error);
+                showView('planner');
+                plannerError.textContent = error.message;
+            } finally {
+                loader.classList.add('hidden');
+                itineraryContent.classList.remove('hidden');
+            }
+        }
+
+        // --- Itinerary Rendering ---
+        function renderItinerary(plan, destination) {
+            document.getElementById('itinerary-title').textContent = `Your Trip to ${destination}`;
+            
+            // Render Transport
+            const transportSection = document.getElementById('transport-section');
+            const transport = plan.transport_recommendation;
+            transportSection.innerHTML = `
+                <h3 class="text-2xl font-semibold mb-4 border-b pb-2">Travel Recommendation</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div>
+                        <p class="font-medium text-gray-500">Mode</p>
+                        <p class="text-xl font-bold text-blue-600">${transport.mode}</p>
+                    </div>
+                    <div>
+                        <p class="font-medium text-gray-500">Est. Round-Trip Cost</p>
+                        <p class="text-xl font-bold">${transport.estimated_cost_round_trip ? `${transport.estimated_cost_round_trip.amount} ${transport.estimated_cost_round_trip.currency}` : 'N/A'}</p>
+                    </div>
+                    <div class="md:col-span-1">
+                        <p class="font-medium text-gray-500">Details</p>
+                        <p class="text-sm">${transport.details}</p>
+                    </div>
+                </div>
+            `;
+
+            // Render Daily Plan
+            const dailyPlanSection = document.getElementById('daily-plan-section');
+            dailyPlanSection.innerHTML = '';
+            const locations = [];
+            
+            plan.itinerary.forEach(day => {
+                const dayCard = document.createElement('div');
+                dayCard.className = 'bg-white p-6 rounded-lg shadow-md';
+                
+                const weather = day.weather;
+                const weatherInfo = weather ? `<span class="text-sm font-medium text-gray-600">${weather.temp_max}°C / ${weather.temp_min}°C</span>` : '';
+
+                dayCard.innerHTML = `<h4 class="text-xl font-semibold mb-4 flex justify-between">Day ${day.day} <span class="text-gray-500">${day.date}</span> ${weatherInfo}</h4>`;
+                
+                const activitiesList = document.createElement('div');
+                activitiesList.className = 'space-y-4';
+                
+                ['morning', 'afternoon', 'evening'].forEach(period => {
+                    const activity = day[period];
+                    if (activity && activity.name) {
+                        activitiesList.innerHTML += `
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <p class="font-semibold capitalize">${period}: ${activity.name}</p>
+                                <p class="text-gray-600 text-sm">${activity.description}</p>
+                                <p class="text-xs text-blue-800 bg-blue-100 inline-block px-2 py-1 rounded-full mt-1">Cuisine: ${activity.local_cuisine_suggestion}</p>
+                                ${activity.estimated_cost ? `<p class="text-xs text-green-800 bg-green-100 inline-block px-2 py-1 rounded-full mt-1 ml-2">Est. Cost: ${activity.estimated_cost.amount} ${activity.estimated_cost.currency}</p>` : ''}
+                            </div>
+                        `;
+                        if (activity.location) {
+                            locations.push({
+                                ...activity.location,
+                                popup: `<b>${activity.name}</b><br>${period.charAt(0).toUpperCase() + period.slice(1)}`
+                            });
+                        }
+                    }
+                });
+                dayCard.appendChild(activitiesList);
+                dailyPlanSection.appendChild(dayCard);
+            });
+
+            // Render Map
+            renderMap(locations);
+        }
+
+        function renderMap(locations) {
+            if (map) {
+                map.remove();
+            }
+            map = L.map('map');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            if (locations.length > 0) {
+                const markers = L.featureGroup();
+                locations.forEach(loc => {
+                    const marker = L.marker([loc.lat, loc.lng]).bindPopup(loc.popup);
+                    markers.addLayer(marker);
+                });
+                markers.addTo(map);
+                map.fitBounds(markers.getBounds().pad(0.1));
+            } else {
+                 map.setView([20.5937, 78.9629], 4); // Default to India view if no locations
+            }
+        }
+
+        // --- Event Listeners ---
+        authToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleAuthMode();
+        });
+        authForm.addEventListener('submit', handleAuth);
+        logoutBtn.addEventListener('click', handleLogout);
+        plannerForm.addEventListener('submit', handlePlanTrip);
+        newTripBtn.addEventListener('click', () => showView('planner'));
+
+        // --- Initial Load ---
+        checkAuthState();
+
+    </script>
+</body>
+</html>
