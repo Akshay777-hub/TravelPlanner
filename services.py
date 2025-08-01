@@ -91,7 +91,6 @@ def get_transport_recommendation(origin, destination, start_date, end_date, budg
     # --- Decision Logic ---
     budget_max = float(budget.get('max', 0))
     
-    # Prefer train if it's significantly cheaper or if flights are too expensive
     if train_cost and flight_cost:
         if train_cost < (flight_cost * 0.7) and train_cost <= budget_max:
              recommendation['mode'] = "Train"
@@ -99,7 +98,6 @@ def get_transport_recommendation(origin, destination, start_date, end_date, budg
              recommendation['details'] = f"Recommended train: {trains[0]['train_name']}. Booking advised via local railway services."
              return recommendation
 
-    # Default to flight if available and within budget
     if flight_cost and flight_cost <= budget_max:
         recommendation['mode'] = "Flight"
         recommendation['estimated_cost_round_trip'] = {"amount": flight_cost, "currency": onward_flights[0]['price']['currency']}
@@ -122,6 +120,7 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
     transport_prompt_string = json.dumps(transport_recommendation)
     duration = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1
 
+    # START: Modified Prompt for point-based descriptions
     prompt = f"""
     Act as an expert travel agent. Create a detailed itinerary for a {duration}-day trip from {current_location} to {destination}, starting on {start_date}.
     The traveler's budget is between {budget.get('min')} and {budget.get('max')} {budget.get('currency')}. Their interests are {', '.join(interests)}.
@@ -133,14 +132,16 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
     
     For each day, provide suggestions for 'morning', 'afternoon', and 'evening' in that specific order. For each suggestion, provide:
     1. A "name" of a real, geocodable point of interest.
-    2. A "description".
+    2. A "description" as a JSON list of short, descriptive strings (like bullet points).
     3. An "estimated_cost" object.
     4. A "local_cuisine_suggestion".
     5. A "special_event" (null if none).
+    6. An "image_search_term", which is a simple, descriptive phrase for a stock photo (e.g., "Goa beach sunset", "historic church Goa").
 
     The sum of all 'estimated_cost' amounts must fall within the traveler's budget.
     Provide the output as a valid JSON array.
     """
+    # END: Modified Prompt
     
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -156,18 +157,12 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
         
         response_text = response_json['candidates'][0]['content']['parts'][0]['text']
         
-        # --- MODIFICATION STARTS HERE ---
-        # Extract the JSON string between ```json and ```
         json_start = response_text.find('```json')
         json_end = response_text.rfind('```')
         
         if json_start != -1 and json_end != -1 and json_start < json_end:
-            # Add len('```json') to get past the opening tag
             cleaned_response = response_text[json_start + len('```json'):json_end].strip()
         else:
-            # Fallback if markdown fences are not found (though the prompt asks for them)
-            # In production, you might want to raise an error here explicitly
-            # if a JSON markdown block is strictly expected.
             cleaned_response = response_text.strip()
             print("Warning: JSON markdown fences not found, attempting to parse entire response text.")
             
@@ -175,13 +170,11 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
             raise ValueError("Gemini API returned an empty or unparseable text response.")
         
         itinerary = json.loads(cleaned_response)
-        # --- MODIFICATION ENDS HERE ---
 
     except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
         print(f"--- FAILED TO PARSE GEMINI RESPONSE ---\nError: {e}\nRaw Response: {response.text}\n------------------------------------")
         raise Exception("Could not parse the itinerary from the AI.")
 
-    # Post-processing to add coordinates and weather
     for i, day_plan in enumerate(itinerary):
         if i < len(weather_data): day_plan['weather'] = weather_data[i]
         for period in ['morning', 'afternoon', 'evening']:
@@ -195,5 +188,4 @@ def generate_itinerary_with_coords(destination, start_date, end_date, budget, in
                     print(f"Could not geocode {location_name}: {e}")
                     day_plan[period]['location'] = None
     
-    # Add the transport recommendation to the final output for clarity
     return {"itinerary": itinerary, "transport_recommendation": transport_recommendation}

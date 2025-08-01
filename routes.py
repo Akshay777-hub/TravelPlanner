@@ -219,3 +219,18 @@ def get_trains_standalone():
         return jsonify({"msg": "Missing required query parameters: origin, destination, date"}), 400
     train_options = simulate_train_options(origin, destination, date)
     return jsonify(train_options)
+
+
+
+    trip_data = {
+            'user_id': user.user.id,
+            'name': trip_name,
+            'destination': data['destination'],
+            'start_date': data['start_date'],
+            'end_date': data['end_date'],
+            'budget': data.get('budget'),
+            'interests': data.get('interests', []),
+            'itinerary': plan['itinerary'],
+            # Add this line to save the transport recommendation
+            'transport_recommendation': plan['transport_recommendation']
+        }
